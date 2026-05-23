@@ -68,20 +68,7 @@ jobs:
             FILE_SIZE=$(du -m "$FILENAME" | cut -f1)
             IS_SPLIT="false"
             
-            if [ "$FILE_SIZE" -gt 95 ]; then
-              echo "⚠️ File size is $FILE_SIZE MB (Exceeds 95MB limit). Activating Split Engine..."
-              split -b 90m "$FILENAME" "${FILENAME}.part_"
-              rm "$FILENAME"
-              IS_SPLIT="true"
-            fi
-
-            SAFE_NAME=$(echo "$FILENAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]/_/g' | cut -c1-50)
-            REPO_NAME="file-delivery-${SAFE_NAME}-${COUNTER}"
-            
-            echo "🛠️ Creating dedicated repository: $REPO_NAME"
-            gh repo create "$REPO_NAME" --public --description "Dedicated transport module for $FILENAME." || true
-
-            # Local git initialization for the sub-repo
+            # Local git initialization for the sub-repo (Needed early to write internal configurations)
             git init
             git config --global user.name "github-actions[bot]"
             git config --global user.email "github-actions[bot]@users.noreply.github.com"
@@ -90,11 +77,33 @@ jobs:
             echo "This isolated branch securely stores your asset package." >> README.md
             echo "" >> README.md
 
-            if [ "$IS_SPLIT" = "true" ]; then
+            if [ "$FILE_SIZE" -gt 95 ]; then
+              echo "⚠️ File size is $FILE_SIZE MB (Exceeds 95MB limit). Activating Split Engine..."
+              split -b 90m "$FILENAME" "${FILENAME}.part_"
+              rm "$FILENAME"
+              IS_SPLIT="true"
+
+              # CREATE AUTOMATED WINDOWS BATCH FILE
+              echo "@echo off" > Run_Merger.bat
+              echo "echo 🛠️ M-NRZ Automated File Unification Module" >> Run_Merger.bat
+              echo "echo 📥 Stitching broken data fragments back into: $FILENAME" >> Run_Merger.bat
+              echo "copy /b \"$FILENAME.part_*\" \"$FILENAME\"" >> Run_Merger.bat
+              echo "echo ✅ Reassembly complete! Clean archive has been successfully restored." >> Run_Merger.bat
+              echo "pause" >> Run_Merger.bat
+
               echo "### 🛠️ Reassembly Instructions" >> README.md
-              echo "- **Windows (CMD):** \`copy /b "${FILENAME}.part_*" "${FILENAME}"\`" >> README.md
-              echo "- **Linux / Mac / Android:** \`cat "${FILENAME}.part_"* > "${FILENAME}"\`" >> README.md
+              echo "This file was split to fit within GitHub limits. To stitch it back together:" >> README.md
+              echo "- **Windows:** Simply double-click the **\`Run_Merger.bat\`** file inside this folder!" >> README.md
+              echo "- **Linux / Mac / Android:** Run \`cat \"$FILENAME.part_\"* > \"$FILENAME\"\` inside your terminal." >> README.md
+            else
+              echo "✅ File size is $FILE_SIZE MB. Keeping original unified format."
             fi
+
+            SAFE_NAME=$(echo "$FILENAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]/_/g' | cut -c1-50)
+            REPO_NAME="file-delivery-${SAFE_NAME}-${COUNTER}"
+            
+            echo "🛠️ Creating dedicated repository: $REPO_NAME"
+            gh repo create "$REPO_NAME" --public --description "Dedicated transport module for $FILENAME." || true
 
             git add .
             git commit -m "Deploy asset tracking module via multi-link downloader"
@@ -105,12 +114,16 @@ jobs:
             # Step Summary Links
             echo "### 🔹 File: $FILENAME ($FILE_SIZE MB)" >> $GITHUB_STEP_SUMMARY
             echo "🔗 **[Click Here to Download Source ZIP](https://github.com/$GITHUB_OWNER/$REPO_NAME/archive/refs/heads/main.zip)**" >> $GITHUB_STEP_SUMMARY
+            
+            if [ "$IS_SPLIT" = "true" ]; then
+              echo "* ⚡ *This file is split. After unzipping, simply double-click **Run_Merger.bat** to perfectly fuse it back!*" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "* ✅ *This file is whole. Just unzip it and go.*" >> $GITHUB_STEP_SUMMARY
+            fi
             echo "" >> $GITHUB_STEP_SUMMARY
 
             # APPEND REPO LOGIC TO PARENT MANAGER README.MD
             cd ..
-            
-            # This line handles writing into the README safely as a single compressed command execution block
             python3 -c "import os; marker='<!-- DOWNLOADED-REPOS-START -->'; entry='*   **File:** $FILENAME ($FILE_SIZE MB) | [Go to Repo](https://github.com/$GITHUB_OWNER/$REPO_NAME) | [🚀 Direct ZIP Download](https://github.com/$GITHUB_OWNER/$REPO_NAME/archive/refs/heads/main.zip)\n'; content=open('README.md').read(); open('README.md','w').write(content.replace(marker, marker+'\n'+entry)) if marker in content else print('Marker error')"
 
             rm -rf "$WORK_DIR"
