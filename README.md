@@ -1,4 +1,4 @@
-# Link2BranchDownloader by M-NRZ
+# Link2RepoDownloader by M-NRZ
 # 🌐Link to Repo Downloader 
 
 #Runner gets the link from user and makes it repository(for Iranians to download files by downloading full repository)
