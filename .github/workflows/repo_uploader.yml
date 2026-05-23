@@ -24,12 +24,10 @@ jobs:
       - name: Process, Split, and Deploy All Links
         env:
           RAW_URLS: ${{ github.event.inputs.file_urls }}
+          GH_TOKEN: ${{ secrets.ADMIN_PAT }} # Bypasses validation by mapping directly to GH_TOKEN
           ADMIN_PAT: ${{ secrets.ADMIN_PAT }}
           GITHUB_OWNER: ${{ github.repository_owner }}
         run: |
-          # Authenticate GitHub CLI tool once at the start
-          echo "$ADMIN_PAT" | gh auth login --with-token
-          
           # SANITIZATION ENGINE: Convert spaces to newlines and clean empty rows
           echo "$RAW_URLS" | tr ' ' '\n' | tr -d '\r' | sed '/^[[:space:]]*$/d' > clean_urls.txt
 
@@ -37,24 +35,19 @@ jobs:
           echo "Your files have been isolated into dedicated repositories to bypass network limitations. Download each repository ZIP below:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Initialize a counter for unique naming fallback
           COUNTER=1
 
-          # Loop through each URL individually
           while IFS= read -r URL || [ -n "$URL" ]; do
             echo "----------------------------------------------------"
             echo "Processing Link ($COUNTER): $URL"
             
-            # 1. Setup a fresh isolated working directory for this file
             WORK_DIR="job_space_${COUNTER}"
             mkdir -p "$WORK_DIR"
             cd "$WORK_DIR"
             
-            # Extract and sanitize filename
             RAW_NAME=$(basename "$URL" | cut -d? -f1)
             FILENAME=$(echo "$RAW_NAME" | sed 's/[^a-zA-Z0-9._-]/_/g')
             
-            # Fallback if filename extraction fails
             if [ -z "$FILENAME" ]; then
               FILENAME="downloaded_file_${COUNTER}.bin"
             fi
@@ -67,7 +60,6 @@ jobs:
               continue
             fi
 
-            # 2. Check size and calculate splitting strategy
             FILE_SIZE=$(du -m "$FILENAME" | cut -f1)
             IS_SPLIT="false"
             
@@ -81,14 +73,13 @@ jobs:
               echo "✅ File size is $FILE_SIZE MB. Keeping original unified format."
             fi
 
-            # 3. Formulate a unique repository name
             SAFE_NAME=$(echo "$FILENAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]/_/g' | cut -c1-50)
             REPO_NAME="file-delivery-${SAFE_NAME}-${COUNTER}"
             
             echo "🛠️ Creating dedicated repository: $REPO_NAME"
+            # Creating repo natively using the mapped GH_TOKEN environment variable
             gh repo create "$REPO_NAME" --public --description "Dedicated transport module for $FILENAME." || true
 
-            # 4. Git Initialization and Deployment
             git init
             git config --global user.name "github-actions[bot]"
             git config --global user.email "github-actions[bot]@users.noreply.github.com"
@@ -111,7 +102,6 @@ jobs:
             echo "📤 Uploading files to GitHub ecosystem..."
             git push -u origin main --force
 
-            # 5. Output links directly onto the GitHub Action screen
             echo "### 🔹 File: $FILENAME ($FILE_SIZE MB)" >> $GITHUB_STEP_SUMMARY
             echo "🔗 **[Click Here to Download Source ZIP](https://github.com/$GITHUB_OWNER/$REPO_NAME/archive/refs/heads/main.zip)**" >> $GITHUB_STEP_SUMMARY
             
@@ -122,7 +112,6 @@ jobs:
             fi
             echo "" >> $GITHUB_STEP_SUMMARY
 
-            # 6. Clean up working directory for the next iteration loop
             cd ..
             rm -rf "$WORK_DIR"
             COUNTER=$((COUNTER + 1))
