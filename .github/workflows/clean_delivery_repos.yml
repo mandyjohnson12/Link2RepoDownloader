@@ -1,6 +1,6 @@
 name: 🧹 Clean Delivery Repositories (M-NRZ)
 on:
-  workflow_dispatch: # Allows you to run this manually whenever you want
+  workflow_dispatch:
 
 jobs:
   purge_repositories:
@@ -10,7 +10,7 @@ jobs:
       - name: Checkout Main Manager Repository
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.ADMIN_PAT }} # Uses your token to authenticate
+          token: ${{ secrets.ADMIN_PAT }}
 
       - name: System Environment Check
         env:
@@ -28,9 +28,8 @@ jobs:
         run: |
           echo "🔍 Fetching repository ecosystem list for user: $GITHUB_OWNER..."
           
-          # 1. Fetch ALL repositories owned by the user and filter for only those starting with 'file-delivery-'
-          # This acts as a strict firewall safety shield protecting your other personal projects!
-          TARGET_REPOS=$(gh repo list $GITHUB_OWNER --limit 200 --json name,owner --jq '.[] | select(.name | startswith("file-delivery-")) | .name')
+          # Safely extract repo names matching your prefix template
+          TARGET_REPOS=$(gh repo list $GITHUB_OWNER --limit 200 --json name --jq '.[] | select(.name | startswith("file-delivery-")) | .name')
 
           if [ -z "$TARGET_REPOS" ]; then
             echo "✅ No temporary transport repositories found. Your profile is already clean!"
@@ -40,43 +39,45 @@ jobs:
           fi
 
           echo "## 🧹 Purged Repositories Log" >> $GITHUB_STEP_SUMMARY
-          echo "The following temporary delivery channels were safely destroyed:" >> $GITHUB_STEP_SUMMARY
+          echo "The following temporary delivery channels were processed:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # 2. Loop through each discovered target repository and delete it completely
           for REPO in $TARGET_REPOS; do
             echo "----------------------------------------------------"
-            echo "💥 Obliterating target storage repository: $GITHUB_OWNER/$REPO"
+            echo "💥 Target discovered: $GITHUB_OWNER/$REPO"
             
-            # Deletes the repository quietly without asking for interactive typing confirmation
+            # Alternative bulletproof syntax for automated scripting environments:
+            # Passes the full unique repository path first, followed by the confirmation bypass flag.
             if gh repo delete "$GITHUB_OWNER/$REPO" --yes; then
               echo "🗑️ Successfully deleted: $REPO"
               echo "*   ❌ \`$REPO\` (Permanently Deleted)" >> $GITHUB_STEP_SUMMARY
             else
-              echo "⚠️ Failed to delete: $REPO. Check if it was already removed manually."
-              echo "*   ⚠️ \`$REPO\` (Deletion Failed/Skipped)" >> $GITHUB_STEP_SUMMARY
+              echo "⚠️ Standard deletion skipped. Testing API fallback protocol..."
+              
+              # Fallback direct raw API invocation bypass mechanism
+              if gh api -X DELETE "repos/$GITHUB_OWNER/$REPO" --silent; then
+                echo "🗑️ Successfully wiped via API: $REPO"
+                echo "*   ❌ \`$REPO\` (Permanently Deleted via API)" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "❌ Fatal: Could not destroy $REPO."
+                echo "💡 Double-check that your 'ADMIN_PAT' token has the explicit 'delete_repo' checkbox enabled!"
+                echo "*   ⚠️ \`$REPO\` (Deletion Failed - Check Token Permissions)" >> $GITHUB_STEP_SUMMARY
+              fi
             fi
           done
 
       - name: Reset Main Manager README Records
         run: |
-          # 3. Clean up the README list so old download links vanish from your main dashboard page
           echo "📝 Resetting README.md directory layout tracking pointers..."
-          
           python3 -c "
           marker_start = '<!-- DOWNLOADED-REPOS-START -->'
           marker_end = '<!-- DOWNLOADED-REPOS-END -->'
-          
           with open('README.md', 'r') as f:
               content = f.read()
-              
           if marker_start in content and marker_end in content:
               parts_before = content.split(marker_start)[0]
               parts_after = content.split(marker_end)[1]
-              
-              # Stitch back together completely empty between the tracking comments
               updated_content = parts_before + marker_start + '\n' + marker_end + parts_after
-              
               with open('README.md', 'w') as f:
                   f.write(updated_content)
               print('README cleared successfully.')
