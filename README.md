@@ -13,7 +13,7 @@
 3. Click **Generate new token (classic)**.
 4. Set the Note name to `Multi-Link Downloader Core`.
 5. Check the **`repo`** checkbox.
-6. Check the **'Delete repo'** checkbox.
+6. Check the **`Delete repo`** checkbox.
 7. Scroll to the bottom, click **Generate token**, and copy the string (`ghp_...`).
 
 ### Step 2: Save the Secret Key inside your Repository
