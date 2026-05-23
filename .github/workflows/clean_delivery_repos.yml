@@ -1,0 +1,91 @@
+name: 🧹 Clean Delivery Repositories (M-NRZ)
+on:
+  workflow_dispatch: # Allows you to run this manually whenever you want
+
+jobs:
+  purge_repositories:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Main Manager Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.ADMIN_PAT }} # Uses your token to authenticate
+
+      - name: System Environment Check
+        env:
+          ADMIN_PAT: ${{ secrets.ADMIN_PAT }}
+        run: |
+          if [ -z "$ADMIN_PAT" ]; then
+            echo "❌ Error: ADMIN_PAT secret is missing. Cleaner cannot authenticate."
+            exit 1
+          fi
+
+      - name: Identify and Purge Isolated Storage Repositories
+        env:
+          GH_TOKEN: ${{ secrets.ADMIN_PAT }}
+          GITHUB_OWNER: ${{ github.repository_owner }}
+        run: |
+          echo "🔍 Fetching repository ecosystem list for user: $GITHUB_OWNER..."
+          
+          # 1. Fetch ALL repositories owned by the user and filter for only those starting with 'file-delivery-'
+          # This acts as a strict firewall safety shield protecting your other personal projects!
+          TARGET_REPOS=$(gh repo list $GITHUB_OWNER --limit 200 --json name,owner --jq '.[] | select(.name | startswith("file-delivery-")) | .name')
+
+          if [ -z "$TARGET_REPOS" ]; then
+            echo "✅ No temporary transport repositories found. Your profile is already clean!"
+            echo "## ✨ Clean-up Complete" >> $GITHUB_STEP_SUMMARY
+            echo "No temporary transport modules starting with \`file-delivery-\` were found on your profile." >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+
+          echo "## 🧹 Purged Repositories Log" >> $GITHUB_STEP_SUMMARY
+          echo "The following temporary delivery channels were safely destroyed:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # 2. Loop through each discovered target repository and delete it completely
+          for REPO in $TARGET_REPOS; do
+            echo "----------------------------------------------------"
+            echo "💥 Obliterating target storage repository: $GITHUB_OWNER/$REPO"
+            
+            # Deletes the repository quietly without asking for interactive typing confirmation
+            if gh repo delete "$GITHUB_OWNER/$REPO" --yes; then
+              echo "🗑️ Successfully deleted: $REPO"
+              echo "*   ❌ \`$REPO\` (Permanently Deleted)" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "⚠️ Failed to delete: $REPO. Check if it was already removed manually."
+              echo "*   ⚠️ \`$REPO\` (Deletion Failed/Skipped)" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+      - name: Reset Main Manager README Records
+        run: |
+          # 3. Clean up the README list so old download links vanish from your main dashboard page
+          echo "📝 Resetting README.md directory layout tracking pointers..."
+          
+          python3 -c "
+          marker_start = '<!-- DOWNLOADED-REPOS-START -->'
+          marker_end = '<!-- DOWNLOADED-REPOS-END -->'
+          
+          with open('README.md', 'r') as f:
+              content = f.read()
+              
+          if marker_start in content and marker_end in content:
+              parts_before = content.split(marker_start)[0]
+              parts_after = content.split(marker_end)[1]
+              
+              # Stitch back together completely empty between the tracking comments
+              updated_content = parts_before + marker_start + '\n' + marker_end + parts_after
+              
+              with open('README.md', 'w') as f:
+                  f.write(updated_content)
+              print('README cleared successfully.')
+          "
+
+      - name: Commit and Push Clean Dashboard Update
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git diff-index --quiet HEAD || git commit -m "chore: flush delivery index directory entries out of system matrix"
+          git push origin main
